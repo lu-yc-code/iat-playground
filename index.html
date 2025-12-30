@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>7-Block IAT (Arrow Keys, Two-Line Labels)</title>
 
-  <!-- Local jsPsych -->
+  <!-- Local jsPsych  -->
   <script src="jspsych/jspsych.js"></script>
   <script src="jspsych/plugin-html-keyboard-response.js"></script>
   <link rel="stylesheet" href="jspsych/jspsych.css" />
@@ -13,7 +13,6 @@
   <style>
     body { background:#000; color:#fff; margin:0; }
 
-    /* Two-column category labels (left / right) */
     .iat-labels-2line{
       display:flex;
       justify-content:space-between;
@@ -37,7 +36,6 @@
       white-space:pre;
     }
 
-    /* Central stimulus word */
     .iat-stim{
       margin-top:90px;
       text-align:center;
@@ -45,7 +43,6 @@
       letter-spacing:0.5px;
     }
 
-    /* Instruction screens */
     .iat-instruction{
       max-width:900px;
       margin:80px auto;
@@ -56,7 +53,6 @@
       box-sizing:border-box;
     }
 
-    /* Error feedback (red X) */
     .iat-error{
       margin-top:18px;
       text-align:center;
@@ -165,7 +161,6 @@ const unpleasant = [
    2) Utility functions
    ========================================================= */
 
-// Fisher–Yates shuffle
 function shuffle(array){
   const arr = array.slice();
   for(let i = arr.length - 1; i > 0; i--){
@@ -175,18 +170,15 @@ function shuffle(array){
   return arr;
 }
 
-// Random element from array
 function choice(array){
   return array[Math.floor(Math.random() * array.length)];
 }
 
-// Read URL parameters (e.g., Prolific / Qualtrics IDs)
 function getUrlParam(name){
   const url = new URL(window.location.href);
   return url.searchParams.get(name);
 }
 
-// Detect whether task is embedded in Qualtrics (iframe)
 function isEmbeddedInQualtrics(){
   return (window.self !== window.top);
 }
@@ -240,6 +232,8 @@ function sendToQualtrics(payloadJson, dScore){
 
 /* =========================================================
    5) D-score computation (Greenwald et al.)
+   FIXED: Do NOT use includes("compatible") because
+          "incompatible" also contains "compatible".
    ========================================================= */
 
 function computeD(jsPsych){
@@ -250,20 +244,23 @@ function computeD(jsPsych){
     t.block_type === "incompatible_test"
   ).values();
 
+  // Keep only trials with RT (exclude instruction screens & any NO_KEYS trials)
   trials = trials.filter(t =>
     t.rt !== null && t.rt >= MIN_RT && t.rt <= MAX_RT
   );
 
+  // Penalty RT
   trials.forEach(t => {
     t.penalty_rt = t.rt + (t.correct ? 0 : ERROR_PENALTY_MS);
   });
 
+  // IMPORTANT: exact match only
   const comp = trials
-    .filter(t => t.block_type.includes("compatible"))
+    .filter(t => (t.block_type === "compatible_practice" || t.block_type === "compatible_test"))
     .map(t => t.penalty_rt);
 
   const incomp = trials
-    .filter(t => t.block_type.includes("incompatible"))
+    .filter(t => (t.block_type === "incompatible_practice" || t.block_type === "incompatible_test"))
     .map(t => t.penalty_rt);
 
   function mean(a){ return a.reduce((x,y)=>x+y,0) / a.length; }
@@ -349,8 +346,344 @@ jsPsych.data.addProperties({
   session_id: getUrlParam("SESSION_ID")
 });
 
-/* (Blocks 1–7 and final submission are identical to previous version) */
-/* jsPsych.run(timeline); */
+/* ---------------- Block 1 ---------------- */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: `
+    <div class="iat-instruction">
+      <b>Block 1 – Practice: Flowers vs Insects</b><br><br>
+      Press <b>←</b> for <b>Flowers</b>.<br>
+      Press <b>→</b> for <b>Insects</b>.<br><br>
+      Respond as quickly and accurately as possible.<br><br>
+      Press any key to begin.
+    </div>
+  `
+});
+
+{
+  const trials = [];
+  const header = labelsOneLine(LABELS.b1_left, LABELS.b1_right);
+
+  for(let i=0;i<N_B1;i++){
+    const isFlower = Math.random() < 0.5;
+    const stim = isFlower ? choice(flowers) : choice(insects);
+    const cat  = isFlower ? "flower" : "insect";
+    const correct = isFlower ? LEFT_KEY : RIGHT_KEY;
+
+    trials.push(makeIatTrial(jsPsych,{
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 1,
+      blockType: "targets_practice_1",
+      category: cat
+    }));
+  }
+  timeline.push({ timeline: shuffle(trials) });
+}
+
+/* ---------------- Block 2 ---------------- */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: `
+    <div class="iat-instruction">
+      <b>Block 2 – Practice: Pleasant vs Unpleasant</b><br><br>
+      Press <b>←</b> for <b>Pleasant</b> words.<br>
+      Press <b>→</b> for <b>Unpleasant</b> words.<br><br>
+      Press any key to begin.
+    </div>
+  `
+});
+
+{
+  const trials = [];
+  const header = labelsOneLine(LABELS.b2_left, LABELS.b2_right);
+
+  for(let i=0;i<N_B2;i++){
+    const isPleasant = Math.random() < 0.5;
+    const stim = isPleasant ? choice(pleasant) : choice(unpleasant);
+    const cat  = isPleasant ? "pleasant" : "unpleasant";
+    const correct = isPleasant ? LEFT_KEY : RIGHT_KEY;
+
+    trials.push(makeIatTrial(jsPsych,{
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 2,
+      blockType: "attributes_practice",
+      category: cat
+    }));
+  }
+  timeline.push({ timeline: shuffle(trials) });
+}
+
+/* ---------------- Block 3 (Compatible practice) ---------------- */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: `
+    <div class="iat-instruction">
+      <b>Block 3 – Compatible (Practice)</b><br><br>
+      Press <b>←</b> for: <b>Flowers</b> OR <b>Pleasant</b><br>
+      Press <b>→</b> for: <b>Insects</b> OR <b>Unpleasant</b><br><br>
+      Press any key to begin.
+    </div>
+  `
+});
+
+{
+  const trials = [];
+  const header = labelsTwoLine(
+    LABELS.comp_left_top, LABELS.comp_left_bottom,
+    LABELS.comp_right_top, LABELS.comp_right_bottom
+  );
+
+  const leftCats  = ["flower","pleasant"];
+  const rightCats = ["insect","unpleasant"];
+
+  for(let i=0;i<N_B3;i++){
+    let cat, stim;
+    if(Math.random() < 0.5){
+      if(Math.random() < 0.5){ cat="flower"; stim=choice(flowers); }
+      else { cat="insect"; stim=choice(insects); }
+    } else {
+      if(Math.random() < 0.5){ cat="pleasant"; stim=choice(pleasant); }
+      else { cat="unpleasant"; stim=choice(unpleasant); }
+    }
+
+    const correct = leftCats.includes(cat) ? LEFT_KEY : RIGHT_KEY;
+
+    trials.push(makeIatTrial(jsPsych,{
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 3,
+      blockType: "compatible_practice",
+      category: cat
+    }));
+  }
+  timeline.push({ timeline: shuffle(trials) });
+}
+
+/* ---------------- Block 4 (Compatible test) ---------------- */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: `
+    <div class="iat-instruction">
+      <b>Block 4 – Compatible (Test)</b><br><br>
+      Press <b>←</b> for: <b>Flowers</b> OR <b>Pleasant</b><br>
+      Press <b>→</b> for: <b>Insects</b> OR <b>Unpleasant</b><br><br>
+      Press any key to begin.
+    </div>
+  `
+});
+
+{
+  const trials = [];
+  const header = labelsTwoLine(
+    LABELS.comp_left_top, LABELS.comp_left_bottom,
+    LABELS.comp_right_top, LABELS.comp_right_bottom
+  );
+
+  const leftCats  = ["flower","pleasant"];
+  const rightCats = ["insect","unpleasant"];
+
+  for(let i=0;i<N_B4;i++){
+    let cat, stim;
+    if(Math.random() < 0.5){
+      if(Math.random() < 0.5){ cat="flower"; stim=choice(flowers); }
+      else { cat="insect"; stim=choice(insects); }
+    } else {
+      if(Math.random() < 0.5){ cat="pleasant"; stim=choice(pleasant); }
+      else { cat="unpleasant"; stim=choice(unpleasant); }
+    }
+
+    const correct = leftCats.includes(cat) ? LEFT_KEY : RIGHT_KEY;
+
+    trials.push(makeIatTrial(jsPsych,{
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 4,
+      blockType: "compatible_test",
+      category: cat
+    }));
+  }
+  timeline.push({ timeline: shuffle(trials) });
+}
+
+/* ---------------- Block 5 (Reverse targets) ---------------- */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: `
+    <div class="iat-instruction">
+      <b>Block 5 – Reverse Targets (Practice)</b><br><br>
+      <b>Important:</b> Flowers and Insects switched sides.<br><br>
+      Press <b>←</b> for <b>Insects</b>.<br>
+      Press <b>→</b> for <b>Flowers</b>.<br><br>
+      Press any key to begin.
+    </div>
+  `
+});
+
+{
+  const trials = [];
+  const header = labelsOneLine(LABELS.rev_left, LABELS.rev_right);
+
+  for(let i=0;i<N_B5;i++){
+    const isInsect = Math.random() < 0.5;
+    const stim = isInsect ? choice(insects) : choice(flowers);
+    const cat  = isInsect ? "insect" : "flower";
+    const correct = (cat === "insect") ? LEFT_KEY : RIGHT_KEY;
+
+    trials.push(makeIatTrial(jsPsych,{
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 5,
+      blockType: "targets_practice_2",
+      category: cat
+    }));
+  }
+  timeline.push({ timeline: shuffle(trials) });
+}
+
+/* ---------------- Block 6 (Incompatible practice) ---------------- */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: `
+    <div class="iat-instruction">
+      <b>Block 6 – Incompatible (Practice)</b><br><br>
+      Press <b>←</b> for: <b>Insects</b> OR <b>Pleasant</b><br>
+      Press <b>→</b> for: <b>Flowers</b> OR <b>Unpleasant</b><br><br>
+      Press any key to begin.
+    </div>
+  `
+});
+
+{
+  const trials = [];
+  const header = labelsTwoLine(
+    LABELS.inc_left_top, LABELS.inc_left_bottom,
+    LABELS.inc_right_top, LABELS.inc_right_bottom
+  );
+
+  const leftCats  = ["insect","pleasant"];
+  const rightCats = ["flower","unpleasant"];
+
+  for(let i=0;i<N_B6;i++){
+    let cat, stim;
+    if(Math.random() < 0.5){
+      if(Math.random() < 0.5){ cat="insect"; stim=choice(insects); }
+      else { cat="flower"; stim=choice(flowers); }
+    } else {
+      if(Math.random() < 0.5){ cat="pleasant"; stim=choice(pleasant); }
+      else { cat="unpleasant"; stim=choice(unpleasant); }
+    }
+
+    const correct = leftCats.includes(cat) ? LEFT_KEY : RIGHT_KEY;
+
+    trials.push(makeIatTrial(jsPsych,{
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 6,
+      blockType: "incompatible_practice",
+      category: cat
+    }));
+  }
+  timeline.push({ timeline: shuffle(trials) });
+}
+
+/* ---------------- Block 7 (Incompatible test) ---------------- */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: `
+    <div class="iat-instruction">
+      <b>Block 7 – Incompatible (Test)</b><br><br>
+      Press <b>←</b> for: <b>Insects</b> OR <b>Pleasant</b><br>
+      Press <b>→</b> for: <b>Flowers</b> OR <b>Unpleasant</b><br><br>
+      Press any key to begin.
+    </div>
+  `
+});
+
+{
+  const trials = [];
+  const header = labelsTwoLine(
+    LABELS.inc_left_top, LABELS.inc_left_bottom,
+    LABELS.inc_right_top, LABELS.inc_right_bottom
+  );
+
+  const leftCats  = ["insect","pleasant"];
+  const rightCats = ["flower","unpleasant"];
+
+  for(let i=0;i<N_B7;i++){
+    let cat, stim;
+    if(Math.random() < 0.5){
+      if(Math.random() < 0.5){ cat="insect"; stim=choice(insects); }
+      else { cat="flower"; stim=choice(flowers); }
+    } else {
+      if(Math.random() < 0.5){ cat="pleasant"; stim=choice(pleasant); }
+      else { cat="unpleasant"; stim=choice(unpleasant); }
+    }
+
+    const correct = leftCats.includes(cat) ? LEFT_KEY : RIGHT_KEY;
+
+    trials.push(makeIatTrial(jsPsych,{
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 7,
+      blockType: "incompatible_test",
+      category: cat
+    }));
+  }
+  timeline.push({ timeline: shuffle(trials) });
+}
+
+/* ---------------- Final: send compact data to Qualtrics ---------------- */
+timeline.push({
+  type: jsPsychHtmlKeyboardResponse,
+  stimulus: () => {
+    if (!isEmbeddedInQualtrics()) {
+      return `
+        <div class="iat-instruction">
+          <b>Configuration Error</b><br><br>
+          This task is configured to save data to <b>Qualtrics only</b>.<br>
+          Please launch it inside Qualtrics.<br><br>
+          <div class="iat-small">No data will be saved from this page.</div>
+        </div>
+      `;
+    }
+
+    // Compute D-score
+    const D = computeD(jsPsych);
+    console.log("Computed D-score:", D);
+
+    // Create compact dataset (avoid huge stimulus HTML)
+    const compact = jsPsych.data.get()
+      .filterCustom(t => t.rt !== null && typeof t.block_type === "string")
+      .select([
+        "block","block_type","category","stimulus_label",
+        "response","rt","correct","is_error","time_elapsed",
+        "prolific_pid","study_id","session_id","error_count_total"
+      ])
+      .values();
+
+    sendToQualtrics(JSON.stringify(compact), D);
+
+    return `
+      <div class="iat-instruction">
+        <b>Task Complete</b><br><br>
+        Your responses have been recorded.<br><br>
+        Press <b>SPACE</b> to continue.
+      </div>
+    `;
+  },
+  choices: [" "]
+});
+
+jsPsych.run(timeline);
 
 </script>
 </body>
