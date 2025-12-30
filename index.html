@@ -11,8 +11,9 @@
   <link rel="stylesheet" href="jspsych/jspsych.css" />
 
   <style>
-    body { background:#000; color:#fff; }
+    body { background:#000; color:#fff; margin:0; }
 
+    /* Two-column header labels (left / right) */
     .iat-labels-2line{
       display:flex;
       justify-content:space-between;
@@ -25,7 +26,7 @@
     .iat-label-block{
       display:flex;
       flex-direction:column;
-      width:40%;
+      width:45%;
     }
     .iat-label-left{
       text-align:left;
@@ -49,8 +50,11 @@
       text-align:center;
       font-size:20px;
       line-height:1.7;
+      padding: 0 18px;
+      box-sizing: border-box;
     }
 
+    /* Error feedback */
     .iat-error{
       margin-top:18px;
       text-align:center;
@@ -93,7 +97,7 @@ const MIN_RT = 300;              // remove < 300 ms (D-score)
 const MAX_RT = 10000;            // remove > 10000 ms (D-score)
 const ERROR_PENALTY_MS = 600;     // error penalty for D-score
 
-// Header labels
+// Header labels (edit here if needed)
 const LABELS = {
   b1_left:  "Flowers (←)",
   b1_right: "Insects (→)",
@@ -150,6 +154,7 @@ const unpleasant = [
    2) Helper utilities
    ========================================================= */
 
+// Shuffle (Fisher–Yates)
 function shuffle(array){
   const arr = array.slice();
   for(let i = arr.length - 1; i > 0; i--){
@@ -159,15 +164,18 @@ function shuffle(array){
   return arr;
 }
 
+// Random choice
 function choice(array){
   return array[Math.floor(Math.random() * array.length)];
 }
 
+// Read URL parameters (optional; useful for Prolific / Qualtrics)
 function getUrlParam(name){
   const url = new URL(window.location.href);
   return url.searchParams.get(name);
 }
 
+// True if the task is embedded inside Qualtrics (iframe)
 function isEmbeddedInQualtrics(){
   return (window.self !== window.top);
 }
@@ -214,41 +222,23 @@ function stimHtml(headerHtml, stimText, showErrorX){
 
 /* =========================================================
    4) Qualtrics data send (postMessage only)
-   - Sends data to the parent Qualtrics page.
-   - Qualtrics Question JS must listen and write Embedded Data.
+   - The parent Qualtrics page listens and stores Embedded Data.
    ========================================================= */
 
-// Attempt to infer the parent origin from referrer (Qualtrics page URL).
-// If we cannot infer it, we fall back to "*" (less strict).
-function getParentOrigin(){
-  try{
-    if(document.referrer){
-      return new URL(document.referrer).origin;
-    }
-  } catch(e){}
-  return "*";
-}
-
-// Send exactly once (avoid duplicate postMessage)
-let sentToQualtrics = false;
-
-function sendToQualtrics(iatDataJsonString, dScoreNumber){
-  if(sentToQualtrics) return;
-  sentToQualtrics = true;
-
-  const parentOrigin = getParentOrigin();
-  const dStr = (isNaN(dScoreNumber) ? "" : String(dScoreNumber));
-
+function sendToQualtrics(payloadJson, dScore){
+  // IMPORTANT: keys MUST match the Qualtrics listener script
   window.parent.postMessage({
     type: "IAT_DATA",
-    iat_data: String(iatDataJsonString), // store as string for Qualtrics Embedded Data
-    iat_D: dStr,
+    iat_data: payloadJson,                     // full trial-level JSON
+    iat_D: (isNaN(dScore) ? "" : String(dScore)),
     timestamp_utc: new Date().toISOString()
-  }, parentOrigin);
+  }, "*");
 }
 
 /* =========================================================
    5) D-score computation (Blocks 3+4 vs 6+7)
+   - Removes RT < MIN_RT or > MAX_RT
+   - Adds ERROR_PENALTY_MS for incorrect trials
    ========================================================= */
 
 function computeD(jsPsych){
@@ -295,7 +285,14 @@ function computeD(jsPsych){
    6) Trial factory with error feedback
    ========================================================= */
 
-function makeIatTrial(jsPsych, { headerHtml, stim, correctKey, blockNum, blockType, category }){
+function makeIatTrial(jsPsych, {
+  headerHtml,
+  stim,
+  correctKey,
+  blockNum,
+  blockType,
+  category
+}){
   const responseTrial = {
     type: jsPsychHtmlKeyboardResponse,
     stimulus: stimHtml(headerHtml, stim, false),
@@ -368,8 +365,12 @@ timeline.push({
     const correct = isFlower ? LEFT_KEY : RIGHT_KEY;
 
     trials.push(makeIatTrial(jsPsych, {
-      headerHtml: header, stim, correctKey: correct,
-      blockNum: 1, blockType: "targets_practice_1", category: cat
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 1,
+      blockType: "targets_practice_1",
+      category: cat
     }));
   }
   timeline.push({ timeline: shuffle(trials) });
@@ -398,8 +399,12 @@ timeline.push({
     const correct = isPleasant ? LEFT_KEY : RIGHT_KEY;
 
     trials.push(makeIatTrial(jsPsych, {
-      headerHtml: header, stim, correctKey: correct,
-      blockNum: 2, blockType: "attributes_practice", category: cat
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 2,
+      blockType: "attributes_practice",
+      category: cat
     }));
   }
   timeline.push({ timeline: shuffle(trials) });
@@ -440,8 +445,12 @@ timeline.push({
     const correct = leftCats.includes(cat) ? LEFT_KEY : RIGHT_KEY;
 
     trials.push(makeIatTrial(jsPsych, {
-      headerHtml: header, stim, correctKey: correct,
-      blockNum: 3, blockType: "compatible_practice", category: cat
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 3,
+      blockType: "compatible_practice",
+      category: cat
     }));
   }
   timeline.push({ timeline: shuffle(trials) });
@@ -482,8 +491,12 @@ timeline.push({
     const correct = leftCats.includes(cat) ? LEFT_KEY : RIGHT_KEY;
 
     trials.push(makeIatTrial(jsPsych, {
-      headerHtml: header, stim, correctKey: correct,
-      blockNum: 4, blockType: "compatible_test", category: cat
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 4,
+      blockType: "compatible_test",
+      category: cat
     }));
   }
   timeline.push({ timeline: shuffle(trials) });
@@ -514,8 +527,12 @@ timeline.push({
     const correct = (cat === "insect") ? LEFT_KEY : RIGHT_KEY;
 
     trials.push(makeIatTrial(jsPsych, {
-      headerHtml: header, stim, correctKey: correct,
-      blockNum: 5, blockType: "targets_practice_2", category: cat
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 5,
+      blockType: "targets_practice_2",
+      category: cat
     }));
   }
   timeline.push({ timeline: shuffle(trials) });
@@ -556,8 +573,12 @@ timeline.push({
     const correct = leftCats.includes(cat) ? LEFT_KEY : RIGHT_KEY;
 
     trials.push(makeIatTrial(jsPsych, {
-      headerHtml: header, stim, correctKey: correct,
-      blockNum: 6, blockType: "incompatible_practice", category: cat
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 6,
+      blockType: "incompatible_practice",
+      category: cat
     }));
   }
   timeline.push({ timeline: shuffle(trials) });
@@ -598,8 +619,12 @@ timeline.push({
     const correct = leftCats.includes(cat) ? LEFT_KEY : RIGHT_KEY;
 
     trials.push(makeIatTrial(jsPsych, {
-      headerHtml: header, stim, correctKey: correct,
-      blockNum: 7, blockType: "incompatible_test", category: cat
+      headerHtml: header,
+      stim,
+      correctKey: correct,
+      blockNum: 7,
+      blockType: "incompatible_test",
+      category: cat
     }));
   }
   timeline.push({ timeline: shuffle(trials) });
@@ -607,7 +632,6 @@ timeline.push({
 
 /* =========================================================
    8) Final step: compute D-score and send to Qualtrics only
-   - No download option is provided to participants.
    ========================================================= */
 
 timeline.push({
@@ -627,28 +651,24 @@ timeline.push({
       `;
     }
 
+    // Send full JSON + D-score to Qualtrics parent page
+    sendToQualtrics(jsPsych.data.get().json(), D);
+
     return `
       <div class="iat-instruction">
         <b>Task Complete</b><br><br>
-        Press <b>SPACE</b> to continue.<br><br>
-        <div class="iat-small">Do not close this tab until you continue.</div>
+        Your responses have been recorded.<br><br>
+        Press <b>SPACE</b> to continue.
       </div>
     `;
   },
-  choices: [" "],
-  on_finish: () => {
-    // Send after the participant presses SPACE (more reliable)
-    const D = computeD(jsPsych);
-    sendToQualtrics(jsPsych.data.get().json(), D);
-  }
+  choices: [" "]
 });
 
 /* =========================================================
-   9) Run the experiment
+   9) Run
    ========================================================= */
-
 jsPsych.run(timeline);
-
 </script>
 </body>
 </html>
