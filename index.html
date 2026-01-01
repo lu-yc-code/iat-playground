@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>7-Block IAT (Arrow Keys, Two-Line Labels)</title>
 
-  <!-- Local jsPsych  -->
+  <!-- Local jsPsych -->
   <script src="jspsych/jspsych.js"></script>
   <script src="jspsych/plugin-html-keyboard-response.js"></script>
   <link rel="stylesheet" href="jspsych/jspsych.css" />
@@ -27,14 +27,8 @@
       flex-direction:column;
       width:45%;
     }
-    .iat-label-left{
-      text-align:left;
-      white-space:pre;
-    }
-    .iat-label-right{
-      text-align:right;
-      white-space:pre;
-    }
+    .iat-label-left{ text-align:left; white-space:pre; }
+    .iat-label-right{ text-align:right; white-space:pre; }
 
     .iat-stim{
       margin-top:90px;
@@ -53,14 +47,6 @@
       box-sizing:border-box;
     }
 
-    .iat-error{
-      margin-top:18px;
-      text-align:center;
-      font-size:42px;
-      color:#ff4d4d;
-      font-weight:700;
-    }
-
     .iat-small{
       margin-top:18px;
       text-align:center;
@@ -73,17 +59,10 @@
 <body>
 <script>
 /* =========================================================
-   0) Global configuration
+   0) Configuration
    ========================================================= */
 
-/*
- * Toggle visual error feedback.
- * false = no visual feedback (errors recorded in data only)
- * true  = show a brief red "X" after incorrect responses
- */
-const SHOW_ERROR_FEEDBACK = false;
-
-// Key mapping
+// Key mapping (Arrow keys)
 const LEFT_KEY  = "ArrowLeft";
 const RIGHT_KEY = "ArrowRight";
 
@@ -95,9 +74,6 @@ const N_B4 = 40;  // critical
 const N_B5 = 20;
 const N_B6 = 20;
 const N_B7 = 40;  // critical
-
-// Error feedback duration (used only if SHOW_ERROR_FEEDBACK = true)
-const ERROR_FEEDBACK_MS = 300;
 
 // D-score trimming and penalty parameters
 const MIN_RT = 300;
@@ -161,6 +137,7 @@ const unpleasant = [
    2) Utility functions
    ========================================================= */
 
+// Fisher–Yates shuffle
 function shuffle(array){
   const arr = array.slice();
   for(let i = arr.length - 1; i > 0; i--){
@@ -170,15 +147,18 @@ function shuffle(array){
   return arr;
 }
 
+// Random element from array
 function choice(array){
   return array[Math.floor(Math.random() * array.length)];
 }
 
+// Read URL parameters (e.g., Prolific / Qualtrics IDs)
 function getUrlParam(name){
   const url = new URL(window.location.href);
   return url.searchParams.get(name);
 }
 
+// Detect whether task is embedded in Qualtrics (iframe)
 function isEmbeddedInQualtrics(){
   return (window.self !== window.top);
 }
@@ -209,11 +189,10 @@ function labelsTwoLine(leftTop, leftBottom, rightTop, rightBottom){
   `;
 }
 
-function stimHtml(headerHtml, stimText, showErrorX){
+function stimHtml(headerHtml, stimText){
   return `
     ${headerHtml}
     <div class="iat-stim">${stimText}</div>
-    ${showErrorX ? `<div class="iat-error">X</div>` : ``}
   `;
 }
 
@@ -221,19 +200,21 @@ function stimHtml(headerHtml, stimText, showErrorX){
    4) Send data to Qualtrics via postMessage
    ========================================================= */
 
-function sendToQualtrics(payloadJson, dScore){
+function sendToQualtrics(payloadJsonString, dScore){
+  // IMPORTANT:
+  // - send compact JSON STRING (not huge objects)
+  // - do not rely on Qualtrics functions here (only postMessage)
   window.parent.postMessage({
     type: "IAT_DATA",
-    iat_data: payloadJson,
+    iat_data: payloadJsonString,
     iat_D: (isNaN(dScore) ? "" : String(dScore)),
     timestamp_utc: new Date().toISOString()
   }, "*");
 }
 
 /* =========================================================
-   5) D-score computation (Greenwald et al.)
-   FIXED: Do NOT use includes("compatible") because
-          "incompatible" also contains "compatible".
+   5) D-score computation (compatible vs incompatible)
+   - FIXED: exact block_type matching only
    ========================================================= */
 
 function computeD(jsPsych){
@@ -244,17 +225,16 @@ function computeD(jsPsych){
     t.block_type === "incompatible_test"
   ).values();
 
-  // Keep only trials with RT (exclude instruction screens & any NO_KEYS trials)
+  // Keep only valid RT trials (exclude instructions, etc.)
   trials = trials.filter(t =>
-    t.rt !== null && t.rt >= MIN_RT && t.rt <= MAX_RT
+    typeof t.rt === "number" && t.rt >= MIN_RT && t.rt <= MAX_RT
   );
 
-  // Penalty RT
+  // Add error penalty
   trials.forEach(t => {
     t.penalty_rt = t.rt + (t.correct ? 0 : ERROR_PENALTY_MS);
   });
 
-  // IMPORTANT: exact match only
   const comp = trials
     .filter(t => (t.block_type === "compatible_practice" || t.block_type === "compatible_test"))
     .map(t => t.penalty_rt);
@@ -278,7 +258,8 @@ function computeD(jsPsych){
 }
 
 /* =========================================================
-   6) Trial factory (toggleable error feedback)
+   6) Trial factory (NO visual error feedback)
+   - Errors are recorded in data only
    ========================================================= */
 
 function makeIatTrial(jsPsych, {
@@ -288,9 +269,9 @@ function makeIatTrial(jsPsych, {
     window.__iat_error_count = 0;
   }
 
-  const responseTrial = {
+  return {
     type: jsPsychHtmlKeyboardResponse,
-    stimulus: stimHtml(headerHtml, stim, false),
+    stimulus: stimHtml(headerHtml, stim),
     choices: [LEFT_KEY, RIGHT_KEY],
     data: {
       block: blockNum,
@@ -311,35 +292,16 @@ function makeIatTrial(jsPsych, {
       d.error_count_total = window.__iat_error_count;
     }
   };
-
-  if (!SHOW_ERROR_FEEDBACK) {
-    return responseTrial;
-  }
-
-  const errorTrial = {
-    timeline: [{
-      type: jsPsychHtmlKeyboardResponse,
-      stimulus: stimHtml(headerHtml, stim, true),
-      choices: "NO_KEYS",
-      trial_duration: ERROR_FEEDBACK_MS,
-      data: { feedback: "error_x" }
-    }],
-    conditional_function: () => {
-      const last = jsPsych.data.get().last(1).values()[0];
-      return last && last.correct === false;
-    }
-  };
-
-  return { timeline: [responseTrial, errorTrial] };
 }
 
 /* =========================================================
-   7–9) Timeline construction & execution
+   7) Timeline construction & execution
    ========================================================= */
 
 const jsPsych = initJsPsych();
 const timeline = [];
 
+// Add IDs if present in URL (optional)
 jsPsych.data.addProperties({
   prolific_pid: getUrlParam("PROLIFIC_PID"),
   study_id: getUrlParam("STUDY_ID"),
@@ -656,20 +618,31 @@ timeline.push({
       `;
     }
 
-    // Compute D-score
+    // 1) Compute D-score
     const D = computeD(jsPsych);
     console.log("Computed D-score:", D);
 
-    // Create compact dataset (avoid huge stimulus HTML)
-    const compact = jsPsych.data.get()
-      .filterCustom(t => t.rt !== null && typeof t.block_type === "string")
-      .select([
-        "block","block_type","category","stimulus_label",
-        "response","rt","correct","is_error","time_elapsed",
-        "prolific_pid","study_id","session_id","error_count_total"
-      ])
-      .values();
+    // 2) Build compact dataset (compatible with older jsPsych)
+    const all = jsPsych.data.get().values();
+    const compact = all
+      .filter(t => typeof t.rt === "number" && typeof t.block_type === "string")
+      .map(t => ({
+        block: t.block,
+        block_type: t.block_type,
+        category: t.category,
+        stimulus_label: t.stimulus_label,
+        response: t.response,
+        rt: t.rt,
+        correct: t.correct,
+        is_error: t.is_error,
+        time_elapsed: t.time_elapsed,
+        prolific_pid: t.prolific_pid,
+        study_id: t.study_id,
+        session_id: t.session_id,
+        error_count_total: t.error_count_total
+      }));
 
+    // 3) Send to Qualtrics (stringified JSON)
     sendToQualtrics(JSON.stringify(compact), D);
 
     return `
@@ -683,6 +656,7 @@ timeline.push({
   choices: [" "]
 });
 
+// Run the experiment
 jsPsych.run(timeline);
 
 </script>
